@@ -25,6 +25,17 @@ go install github.com/tarasglek/stunmesh-avahi@latest
 
 Or download `stunmesh-avahi-linux-amd64` from releases.
 
+Releases also ship `stunmesh-bundle-linux-<arch>-<version>.tar.gz`, everything to run a whole mesh on systemd and OpenWrt nodes: stunmesh-go and stunmesh-avahi merged into one binary with [makebb](https://github.com/u-root/gobusybox) (about 26% smaller than the two), `stunmesh-opendht-shell`, a config generator, installers and service units. It holds no site config: your `mesh.yaml` and the configs rendered from it stay with you. See [deploy/README.md](deploy/README.md).
+
+## Release
+
+```sh
+git tag vX.Y.Z && git push --tags
+make release   # builds dist/ for ARCHES (amd64 arm64), uploads with gh
+```
+
+`make dist` builds without uploading. Pins: `STUNMESH_VERSION` (and its `STUNMESH_COMMIT`), `MAKEBB_VERSION`, `GO_VERSION`. Builds are reproducible: the same commit gives byte-identical artifacts and `SHA256SUMS`, regardless of checkout path or umask.
+
 ## Config
 
 ```yaml

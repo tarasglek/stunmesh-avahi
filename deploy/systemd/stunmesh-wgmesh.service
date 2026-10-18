@@ -1,0 +1,13 @@
+[Unit]
+Description=STUNMESH-go WireGuard NAT traversal (wgmesh)
+After=wg-quick@wgmesh.service network-online.target
+Wants=network-online.target
+BindsTo=wg-quick@wgmesh.service
+
+[Service]
+ExecStart=/usr/local/bin/stunmesh-go -c /etc/stunmesh/config.yaml
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=wg-quick@wgmesh.service
