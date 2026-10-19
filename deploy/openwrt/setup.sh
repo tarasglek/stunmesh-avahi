@@ -8,12 +8,19 @@ d=$1
 	echo "bin/stunmesh-bb does not run here; wrong arch bundle?" >&2
 	exit 1
 }
-for cmd in wg avahi-browse curl base64; do
+# The DHT proxies need TLS 1.3. The store plugin prefers curl, but curl on
+# OpenWrt 22.03 (mbedTLS 2.28) can't do it; there remove curl and the plugin
+# falls back to wget (uclient-fetch), which can.
+for cmd in wg avahi-browse base64; do
 	command -v $cmd >/dev/null || {
-		echo "missing $cmd; apk add wireguard-tools avahi-dbus-daemon avahi-utils curl coreutils-base64" >&2
+		echo "missing $cmd; install wireguard-tools avahi-dbus-daemon avahi-utils coreutils-base64 (apk or opkg)" >&2
 		exit 1
 	}
 done
+command -v curl >/dev/null || command -v wget >/dev/null || {
+	echo "missing curl or wget" >&2
+	exit 1
+}
 
 mkdir -p /usr/local/bin /etc/stunmesh /etc/wireguard
 chmod 700 /etc/stunmesh /etc/wireguard
