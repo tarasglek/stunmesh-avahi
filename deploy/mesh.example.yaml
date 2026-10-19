@@ -1,7 +1,9 @@
 # Source of truth for the wgmesh. Copy to CONFIG_DIR/mesh.yaml, edit, then run
 # ./gen.py CONFIG_DIR/mesh.yaml. A node without a pubkey gets its own files but
 # is nobody's peer yet; its first install prints the key to fill in.
+# Each node gets its own WireGuard port, counting down from 32767 (gen.py
+# suggests the next one); never change a node's port once it's in use.
 nodes:
-  desktop: { ip: 10.99.0.1 }
-  laptop:  { ip: 10.99.0.2 }
-  stick:   { ip: 10.99.0.3, openwrt: true }
+  desktop: { ip: 10.99.0.1, port: 32767 }
+  laptop:  { ip: 10.99.0.2, port: 32766 }
+  stick:   { ip: 10.99.0.3, port: 32765, openwrt: true }

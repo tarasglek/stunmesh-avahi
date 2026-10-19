@@ -13,7 +13,8 @@ use LAN addresses found over mDNS.
 - `install-openwrt.sh`: installs an OpenWrt node over ssh, run from any host
 - `licenses/`: stunmesh-go and stunmesh-avahi licenses
 
-Every node listens on UDP 51830 and gets `<node>.mesh.internal` in `/etc/hosts`.
+Every node listens on its own UDP port from `mesh.yaml` (unique ports let
+plain NAT keep each one, so no router rules are needed) and gets `<node>.mesh.internal` in `/etc/hosts`.
 
 ## Use
 
