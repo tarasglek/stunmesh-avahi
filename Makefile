@@ -37,8 +37,21 @@ export GOEXPERIMENT :=
 export GOAMD64 := v1
 export GOARM64 := v8.0
 
-.PHONY: dist release test clean
+GOARCH ?= $(shell go env GOARCH)
+
+.PHONY: build check dist release test clean
 dist: $(DIST)/SHA256SUMS
+
+# stunmesh-go with opendht, lease and avahi linked in, for this host's arch.
+build:
+	GOOS=linux GOARCH=$(GOARCH) go build -trimpath -ldflags '-s -w' -o $(BUILD)/stunmesh-go-$(GOARCH) ./cmd/stunmesh-go
+
+# Plugins are created inside app.New, before anything touches WireGuard, so
+# this runs as a normal user: reaching "running in oneshot mode" means every
+# plugin in check.yaml was found and built.
+check: build test
+	-$(BUILD)/stunmesh-go-$(GOARCH) -c check.yaml -oneshot > $(BUILD)/check.log 2>&1
+	grep -q 'running in oneshot mode' $(BUILD)/check.log
 
 $(DIST)/SHA256SUMS: $(DIST_FILES)
 	cd $(DIST) && sha256sum $(notdir $^) > SHA256SUMS

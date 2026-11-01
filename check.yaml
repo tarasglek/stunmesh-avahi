@@ -1,0 +1,20 @@
+# Smoke config for make check: avahi wraps lease, which wraps upstream's
+# opendht, each by instance name. Plugin creation does not dial, and the
+# endpoint is a dead local port in case this ever runs as root.
+refresh_interval: "1m"
+interfaces:
+  wgmesh:
+    peers: {}
+plugins:
+  dht:
+    type: builtin
+    name: opendht
+    endpoints: ["http://127.0.0.1:9"]
+  leased:
+    type: builtin
+    name: lease
+    next: dht
+  mesh:
+    type: builtin
+    name: avahi
+    next: leased
