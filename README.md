@@ -53,8 +53,7 @@ port or key changes.
 
 ## Measured
 
-On an OpenWrt LTE stick with 6 peers, one of them offline, DHT traffic
-including IP headers, over 10 minutes each:
+One node with 6 peers, one of them offline:
 
 | Setup | DHT per day | WireGuard to the offline peer per day |
 |---|---|---|
@@ -83,8 +82,6 @@ Release: tag, push the tag, `make release`.
 ## Limits
 
 - IPv4 only: live and LAN answers are IPv4 records.
-- avahi does not check reachability: if mDNS sees the peer but UDP between
-  them is blocked, the LAN IP is still used.
 - No multicast (guest Wi-Fi, client isolation): avahi falls back to the
   store's record.
 - A peer that comes back after being away can take up to 4 minutes to be
