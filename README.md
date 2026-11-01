@@ -1,40 +1,23 @@
 # stunmesh-avahi
 
-[stunmesh-go](https://github.com/tjjh89017/stunmesh-go) shell plugin that lets peers on the same LAN talk directly.
+Two [stunmesh-go](https://github.com/tjjh89017/stunmesh-go) plugins, and a
+stunmesh-go binary with them compiled in, for a WireGuard mesh that costs
+next to nothing on metered links and works between peers on the same LAN.
 
-stunmesh only publishes each node's public ip:port. Two nodes behind the same router then try to reach each other via the router's public IP, which fails unless the router hairpins UDP. You can't fix every router a laptop visits.
+- **avahi**: stunmesh only publishes each node's public ip:port, so two
+  nodes behind the same router try to reach each other through its public
+  IP, which fails unless the router hairpins UDP. avahi advertises the
+  WireGuard device over mDNS and, when a peer shares our public IP and is
+  visible on the LAN, answers with its LAN ip:port instead.
+- **lease**: publishes our record only when it changes or before the DHT
+  expires it, skips lookups of peers with a fresh WireGuard handshake, and
+  quiets peers that are away: their lookups back off to every 4 minutes
+  and, with `keepalive` set, their WireGuard keepalive is off until they
+  return.
 
-stunmesh-avahi wraps your real store plugin (OpenDHT, Cloudflare, anything speaking the shell protocol):
-
-- **set**: advertises the WireGuard device as an avahi static service (`_wgmesh._udp`, WG port, `pk=<wg pubkey>`), remembers our public IP from the record, passes the request on.
-- **get**: passes the request on and opens the peer's record. If the peer is behind our public IP (or the store is down) and avahi sees the peer's key, answers with its LAN ip:port instead.
-
-Same number of store calls as the plugin alone. Stale mDNS is ignored once the peer publishes a different public IP. Peers are matched by WG key, not hostname. The LAN answer is sealed exactly like stunmesh's own records.
-
-## Requirements
-
-- Linux, stunmesh-go running as root
-- `wg`, `avahi-daemon`, `avahi-browse`
-- A shell store plugin, e.g. `stunmesh-opendht-shell` from the stunmesh-go plugins release
-
-## Install
-
-```sh
-go install github.com/tarasglek/stunmesh-avahi@latest
-```
-
-Or download `stunmesh-avahi-linux-amd64` from releases.
-
-Releases also ship `stunmesh-bundle-linux-<arch>-<version>.tar.gz`, everything to run a whole mesh on systemd and OpenWrt nodes: stunmesh-go and stunmesh-avahi merged into one binary with [makebb](https://github.com/u-root/gobusybox) (about 26% smaller than the two), `stunmesh-opendht-shell`, a config generator, installers and service units. It holds no site config: your `mesh.yaml` and the configs rendered from it stay with you. See [deploy/README.md](deploy/README.md).
-
-## Release
-
-```sh
-git tag vX.Y.Z && git push --tags
-make release   # builds dist/ for ARCHES (amd64 arm64), uploads with gh
-```
-
-`make dist` builds without uploading. Pins: `STUNMESH_VERSION` (and its `STUNMESH_COMMIT`), `MAKEBB_VERSION`, `GO_VERSION`. Builds are reproducible: the same commit gives byte-identical artifacts and `SHA256SUMS`, regardless of checkout path or umask.
+Both wrap another plugin instance through stunmesh-go's public plugin API
+([#320](https://github.com/tjjh89017/stunmesh-go/issues/320)), so they work
+with any store, not only OpenDHT.
 
 ## Config
 
@@ -44,32 +27,68 @@ interfaces:
     peers:
       node-b:
         public_key: "<wg-pubkey-of-node-b>"
-        plugin: avahi-then-dht
+        plugin: mesh
 plugins:
-  avahi-then-dht:
-    type: shell
-    command: /usr/local/bin/stunmesh-avahi
-    args:
-      - -dev=wgmesh
-      - --
-      - /usr/local/bin/stunmesh-opendht-shell
-      - -endpoint
-      - https://dhtproxy2.jami.net
-    dedup: false
+  dht:
+    type: builtin
+    name: opendht
+    endpoints: ["http://dhtproxy2.jami.net", "http://dhtproxy3.jami.net", "https://dhtproxy2.jami.net"]
+  leased:
+    type: builtin
+    name: lease
+    next: dht
+    keepalive: 25s   # the WireGuard config's persistent keepalive; omit to leave keepalives alone
+  mesh:
+    type: builtin
+    name: avahi
+    next: leased
 ```
 
-Everything after `--` is the store plugin and its args. Restart stunmesh after config changes.
+lease also takes `republish` (default `7m30s`) and `fresh` (default `3m`).
+Keep `republish` plus stunmesh's `refresh_interval` under the store's expiry
+(10 minutes for OpenDHT).
 
-Writes:
+avahi writes `/etc/avahi/services/stunmesh-<device>.service`, only when the
+port or key changes.
 
-- `/etc/avahi/services/stunmesh-<dev>.service`, only when port or key changes
-- `/run/stunmesh-avahi/<dev>`, our last public IPv4
+## Measured
+
+On an OpenWrt LTE stick with 6 peers, one of them offline, DHT traffic
+including IP headers, over 10 minutes each:
+
+| Setup | DHT per day | WireGuard to the offline peer per day |
+|---|---|---|
+| shell plugins, https | ~196 MB | ~2.1 MB |
+| avahi, lease, opendht, https | ~7.5 MB | ~2.1 MB |
+| same, plain http | ~2.4 MB | ~2.1 MB |
+| same, with `keepalive` | ~1.3 MB | 0 |
+
+## Build and run
+
+```sh
+make check   # build for this host, run the tests and a plugin-chain smoke test
+make dist    # release bundles for ARCHES (amd64 arm64) in dist/
+```
+
+`cmd/stunmesh-go` is upstream's `main.go` linking `builtin/opendht` and
+these plugins. `go.mod` pins stunmesh-go; `GO_VERSION` pins the toolchain.
+Builds are reproducible: the same commit gives byte-identical bundles.
+
+Each bundle, `stunmesh-bundle-linux-<arch>-<version>.tar.gz`, holds the
+binary, a config generator, installers and service units for systemd and
+OpenWrt nodes, and no site config. See [deploy/README.md](deploy/README.md).
+
+Release: tag, push the tag, `make release`.
 
 ## Limits
 
-- IPv4 only: stunmesh's Linux WG client drops IPv6 link-local zones.
-- No reachability check: if avahi sees the peer but UDP between them is blocked, the LAN IP is still used.
-- No multicast (guest Wi-Fi, client isolation): falls back to the store's public IP.
+- IPv4 only: live and LAN answers are IPv4 records.
+- avahi does not check reachability: if mDNS sees the peer but UDP between
+  them is blocked, the LAN IP is still used.
+- No multicast (guest Wi-Fi, client isolation): avahi falls back to the
+  store's record.
+- A peer that comes back after being away can take up to 4 minutes to be
+  looked up again, unless it reaches us first.
 
 ## License
 
