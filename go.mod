@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/rs/zerolog v1.35.1
-	github.com/tjjh89017/stunmesh-go v1.15.4-0.20261101144024-13439ab2ffda
+	github.com/tjjh89017/stunmesh-go v1.16.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 )
 

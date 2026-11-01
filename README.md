@@ -69,9 +69,11 @@ make check   # build for this host, run the tests and a plugin-chain smoke test
 make dist    # release bundles for ARCHES (amd64 arm64) in dist/
 ```
 
-`cmd/stunmesh-go` is upstream's `main.go` linking `builtin/opendht` and
-these plugins. `go.mod` pins stunmesh-go; `GO_VERSION` pins the toolchain.
-Builds are reproducible: the same commit gives byte-identical bundles.
+`cmd/stunmesh-go` is upstream's `main.go` importing `builtin/opendht` and
+these plugins; see upstream's
+[Custom Binaries and Go Plugins](https://docs.stunmesh.dev/plugins/custom-binary/)
+for how that works. `go.mod` pins stunmesh-go, `GO_VERSION` the toolchain;
+the same commit gives byte-identical bundles.
 
 Each bundle, `stunmesh-bundle-linux-<arch>-<version>.tar.gz`, holds the
 binary, a config generator, installers and service units for systemd and

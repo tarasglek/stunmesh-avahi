@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
 // Command stunmesh-go is upstream's main.go, copied from tjjh89017/stunmesh-go
-// at 13439ab, linking opendht and the plugins in this module instead of
+// at v1.16.0, linking opendht and the plugins in this module instead of
 // builtin/all. Each plugin registers itself from init.
 package main
 
