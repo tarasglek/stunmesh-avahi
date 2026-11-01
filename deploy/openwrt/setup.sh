@@ -3,33 +3,29 @@
 # bin/, openwrt/, update-hosts.sh and node/{config.yaml,wgmesh.uci,wgmesh.hosts}.
 set -eu
 d=$1
+# Installed over the mesh, the ssh session rides on wgmesh, which ifup below
+# recreates; if the session drops, finish the install anyway.
+trap '' HUP PIPE
 
-"$d/bin/stunmesh-bb" stunmesh-avahi -h >/dev/null 2>&1 || {
-	echo "bin/stunmesh-bb does not run here; wrong arch bundle?" >&2
+"$d/bin/stunmesh-go" -version >/dev/null 2>&1 || {
+	echo "bin/stunmesh-go does not run here; wrong arch bundle?" >&2
 	exit 1
 }
-# The DHT proxies need TLS 1.3. The store plugin prefers curl, but curl on
-# OpenWrt 22.03 (mbedTLS 2.28) can't do it; there remove curl and the plugin
-# falls back to wget (uclient-fetch), which can.
-for cmd in wg avahi-browse base64; do
+for cmd in wg avahi-browse; do
 	command -v $cmd >/dev/null || {
-		echo "missing $cmd; install wireguard-tools avahi-dbus-daemon avahi-utils coreutils-base64 (apk or opkg)" >&2
+		echo "missing $cmd; install wireguard-tools avahi-dbus-daemon avahi-utils (apk or opkg)" >&2
 		exit 1
 	}
 done
-command -v curl >/dev/null || command -v wget >/dev/null || {
-	echo "missing curl or wget" >&2
-	exit 1
-}
 
 mkdir -p /usr/local/bin /etc/stunmesh /etc/wireguard
 chmod 700 /etc/stunmesh /etc/wireguard
-for f in stunmesh-bb stunmesh-opendht-shell; do
-	cp "$d/bin/$f" /usr/local/bin/$f
-	chmod 755 /usr/local/bin/$f
-done
-ln -sf stunmesh-bb /usr/local/bin/stunmesh-go
-ln -sf stunmesh-bb /usr/local/bin/stunmesh-avahi
+# Bundles up to v0.2 shipped a makebb binary behind a stunmesh-go symlink,
+# which cp would write through; remove it all first. The old daemon's shell
+# plugin calls fail until the restart below.
+rm -f /usr/local/bin/stunmesh-bb /usr/local/bin/stunmesh-avahi /usr/local/bin/stunmesh-opendht-shell /usr/local/bin/stunmesh-go
+cp "$d/bin/stunmesh-go" /usr/local/bin/stunmesh-go
+chmod 755 /usr/local/bin/stunmesh-go
 cp "$d/node/config.yaml" /etc/stunmesh/config.yaml
 chmod 600 /etc/stunmesh/config.yaml
 cp "$d/openwrt/stunmesh.init" /etc/init.d/stunmesh

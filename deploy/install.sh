@@ -18,13 +18,13 @@ if [ ! -f "$SRC/wgmesh.conf" ]; then
 	echo "no wgmesh.conf for node '$NODE' in $CONFIG_DIR; run gen.py first" >&2
 	exit 1
 fi
-"$BUNDLE/bin/stunmesh-bb" stunmesh-avahi -h >/dev/null 2>&1 || {
-	echo "bin/stunmesh-bb does not run here; wrong arch bundle?" >&2
+"$BUNDLE/bin/stunmesh-go" -version >/dev/null 2>&1 || {
+	echo "bin/stunmesh-go does not run here; wrong arch bundle?" >&2
 	exit 1
 }
-for cmd in wg wg-quick avahi-browse curl base64; do
+for cmd in wg wg-quick avahi-browse; do
 	command -v $cmd >/dev/null || {
-		echo "missing $cmd; apt install wireguard-tools avahi-daemon avahi-utils curl coreutils" >&2
+		echo "missing $cmd; apt install wireguard-tools avahi-daemon avahi-utils" >&2
 		exit 1
 	}
 done
@@ -37,10 +37,11 @@ install_if_changed() {
 	fi
 }
 
-bin_changed=$(install_if_changed "$BUNDLE/bin/stunmesh-bb" /usr/local/bin/stunmesh-bb 0755)
-bin_changed+=$(install_if_changed "$BUNDLE/bin/stunmesh-opendht-shell" /usr/local/bin/stunmesh-opendht-shell 0755)
-ln -sfn stunmesh-bb /usr/local/bin/stunmesh-go
-ln -sfn stunmesh-bb /usr/local/bin/stunmesh-avahi
+# Bundles up to v0.2 shipped a makebb binary and a shell plugin chain. The old
+# daemon's plugin calls fail until the restart below.
+rm -f /usr/local/bin/stunmesh-bb /usr/local/bin/stunmesh-avahi /usr/local/bin/stunmesh-opendht-shell
+[ ! -L /usr/local/bin/stunmesh-go ] || rm /usr/local/bin/stunmesh-go
+bin_changed=$(install_if_changed "$BUNDLE/bin/stunmesh-go" /usr/local/bin/stunmesh-go 0755)
 
 install -d -m 0700 /etc/wireguard /etc/stunmesh
 if [ ! -s /etc/wireguard/wgmesh.key ]; then

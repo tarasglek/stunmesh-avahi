@@ -1,31 +1,19 @@
-# Release artifacts per arch:
-#   stunmesh-avahi-linux-<arch>                  standalone plugin
-#   stunmesh-bundle-linux-<arch>-<version>.tar.gz, everything to run the mesh:
-#     stunmesh/bin/stunmesh-bb                   stunmesh-go + stunmesh-avahi, one makebb binary
-#     stunmesh/bin/stunmesh-go -> stunmesh-bb
-#     stunmesh/bin/stunmesh-avahi -> stunmesh-bb
-#     stunmesh/bin/stunmesh-opendht-shell        store plugin (shell script)
-#     stunmesh/licenses/                         stunmesh-go and stunmesh-avahi licenses
-#     stunmesh/*                                 deploy/: config generator, installers, units
+# Release artifact per arch, stunmesh-bundle-linux-<arch>-<version>.tar.gz:
+#   stunmesh/bin/stunmesh-go   stunmesh-go with opendht, lease and avahi linked in
+#   stunmesh/licenses/         stunmesh-go and stunmesh-avahi licenses
+#   stunmesh/*                 deploy/: config generator, installers, units
 # No site config goes in: mesh.yaml and rendered node configs stay with the user.
+# stunmesh-go itself is pinned in go.mod.
 VERSION ?= $(shell git describe --tags --always --dirty)
-STUNMESH_VERSION ?= v1.15.1
-# Tags can move; the build refuses any other commit.
-STUNMESH_COMMIT ?= bc0922007e81e1a9abdff38988d2cb8c44a4d208
-MAKEBB_VERSION ?= v0.3.0
 ARCHES ?= amd64 arm64
-# makebb selects files by the go.work version but compiles with the toolchain;
-# they must match or version-tagged files go missing.
 GO_VERSION ?= 1.26.9
+GOARCH ?= $(shell go env GOARCH)
 
 BUILD := build
 DIST := dist
-STUNMESH_SRC := $(BUILD)/stunmesh-go-$(STUNMESH_VERSION)
-MAKEBB := $(abspath $(BUILD)/bin/makebb)
-GO_SRC := go.mod go.sum $(wildcard *.go)
+GO_SRC := go.mod go.sum $(shell find . -name '*.go' -not -path './build/*' -not -path './dist/*')
 DEPLOY_SRC := $(shell find deploy -type f)
-
-DIST_FILES := $(foreach a,$(ARCHES),$(DIST)/stunmesh-avahi-linux-$(a) $(DIST)/stunmesh-bundle-linux-$(a)-$(VERSION).tar.gz)
+BUNDLES := $(foreach a,$(ARCHES),$(DIST)/stunmesh-bundle-linux-$(a)-$(VERSION).tar.gz)
 
 # Reproducible: same commit, same bytes. Pin the toolchain, reset environment
 # that changes codegen, and stamp tar entries with the commit time.
@@ -37,14 +25,12 @@ export GOEXPERIMENT :=
 export GOAMD64 := v1
 export GOARM64 := v8.0
 
-GOARCH ?= $(shell go env GOARCH)
-
 .PHONY: build check dist release test clean
-dist: $(DIST)/SHA256SUMS
+build: $(BUILD)/stunmesh-go-$(GOARCH)
 
-# stunmesh-go with opendht, lease and avahi linked in, for this host's arch.
-build:
-	GOOS=linux GOARCH=$(GOARCH) go build -trimpath -ldflags '-s -w' -o $(BUILD)/stunmesh-go-$(GOARCH) ./cmd/stunmesh-go
+.PRECIOUS: $(BUILD)/stunmesh-go-%
+$(BUILD)/stunmesh-go-%: $(GO_SRC)
+	GOOS=linux GOARCH=$* go build -trimpath -ldflags '-s -w' -o $@ ./cmd/stunmesh-go
 
 # Plugins are created inside app.New, before anything touches WireGuard, so
 # this runs as a normal user: reaching "running in oneshot mode" means every
@@ -53,46 +39,28 @@ check: build test
 	-$(BUILD)/stunmesh-go-$(GOARCH) -c check.yaml -oneshot > $(BUILD)/check.log 2>&1
 	grep -q 'running in oneshot mode' $(BUILD)/check.log
 
-$(DIST)/SHA256SUMS: $(DIST_FILES)
+dist: $(DIST)/SHA256SUMS
+
+$(DIST)/SHA256SUMS: $(BUNDLES)
 	cd $(DIST) && sha256sum $(notdir $^) > SHA256SUMS
 
-$(DIST)/stunmesh-avahi-linux-%: $(GO_SRC)
-	GOOS=linux GOARCH=$* go build -trimpath -ldflags '-s -w' -o $@ .
-
-$(STUNMESH_SRC)/go.mod:
-	rm -rf $(STUNMESH_SRC)
-	git clone -q --depth 1 --branch $(STUNMESH_VERSION) https://github.com/tjjh89017/stunmesh-go $(STUNMESH_SRC)
-	test "$$(git -C $(STUNMESH_SRC) rev-parse HEAD)" = $(STUNMESH_COMMIT)
-
-# Built for the host: makebb itself must not inherit the target GOARCH.
-$(MAKEBB):
-	GOBIN=$(dir $@) go install github.com/u-root/gobusybox/src/cmd/makebb@$(MAKEBB_VERSION)
-
-# makebb only resolves multiple modules through a workspace.
-$(BUILD)/go.work: Makefile
-	mkdir -p $(BUILD)
-	printf 'go %s\n\nuse (\n\t./%s\n\t..\n)\n' $(GO_VERSION) $(notdir $(STUNMESH_SRC)) > $@
-
-$(DIST)/stunmesh-bundle-linux-%-$(VERSION).tar.gz: $(GO_SRC) $(DEPLOY_SRC) $(STUNMESH_SRC)/go.mod $(BUILD)/go.work $(MAKEBB)
+$(DIST)/stunmesh-bundle-linux-%-$(VERSION).tar.gz: $(BUILD)/stunmesh-go-% $(DEPLOY_SRC)
 	rm -rf $(BUILD)/stage-$*
 	mkdir -p $(BUILD)/stage-$*/stunmesh/bin $(BUILD)/stage-$*/stunmesh/licenses $(DIST)
 	cp -R deploy/. $(BUILD)/stage-$*/stunmesh/
-	cd $(BUILD) && GOOS=linux GOARCH=$* $(MAKEBB) -go-build-tags builtin_all -go-enable-inlining \
-		-o stage-$*/stunmesh/bin/stunmesh-bb ./$(notdir $(STUNMESH_SRC)) ..
-	ln -s stunmesh-bb $(BUILD)/stage-$*/stunmesh/bin/stunmesh-go
-	ln -s stunmesh-bb $(BUILD)/stage-$*/stunmesh/bin/stunmesh-avahi
-	install -m 755 $(STUNMESH_SRC)/contrib/opendht-shell/opendht-shell.sh $(BUILD)/stage-$*/stunmesh/bin/stunmesh-opendht-shell
-	for f in LICENSE LICENSE.GPL; do \
-		cp $(STUNMESH_SRC)/$$f $(BUILD)/stage-$*/stunmesh/licenses/stunmesh-go-$$f; \
+	cp $< $(BUILD)/stage-$*/stunmesh/bin/stunmesh-go
+	upstream=$$(go list -m -f '{{.Dir}}' github.com/tjjh89017/stunmesh-go) && for f in LICENSE LICENSE.GPL; do \
+		cp $$upstream/$$f $(BUILD)/stage-$*/stunmesh/licenses/stunmesh-go-$$f; \
 		cp $$f $(BUILD)/stage-$*/stunmesh/licenses/stunmesh-avahi-$$f; \
 	done
+	chmod -R u+w $(BUILD)/stage-$*/stunmesh/licenses
 	tar -C $(BUILD)/stage-$* --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
 		--mode=u+rwX,go+rX,go-w --mtime=@$(SOURCE_DATE_EPOCH) -cf - stunmesh | gzip -9n > $@
 
 release: dist
 	git describe --tags --exact-match HEAD >/dev/null
 	test -z "$$(git status --porcelain)"
-	gh release create $(VERSION) --generate-notes $(DIST_FILES) $(DIST)/SHA256SUMS
+	gh release create $(VERSION) --generate-notes $(BUNDLES) $(DIST)/SHA256SUMS
 
 test:
 	go test ./...

@@ -1,13 +1,11 @@
 # stunmesh bundle
 
 Everything to run a [stunmesh-go](https://github.com/tjjh89017/stunmesh-go)
-WireGuard mesh with [stunmesh-avahi](https://github.com/tarasglek/stunmesh-avahi)
-LAN discovery on systemd and OpenWrt nodes. Nodes find each other's public UDP
-endpoint with STUN and OpenDHT (no account needed); nodes sharing a public IP
-use LAN addresses found over mDNS.
+WireGuard mesh on systemd and OpenWrt nodes. Nodes find each other's public
+UDP endpoint with STUN and OpenDHT (no account needed); nodes sharing a
+public IP use LAN addresses found over mDNS.
 
-- `bin/stunmesh-bb`: stunmesh-go and stunmesh-avahi in one binary, called through the `stunmesh-go` and `stunmesh-avahi` symlinks
-- `bin/stunmesh-opendht-shell`: OpenDHT store plugin
+- `bin/stunmesh-go`: stunmesh-go with the opendht, lease and avahi plugins
 - `gen.py`: renders each node's configs from `mesh.yaml` (needs [uv](https://docs.astral.sh/uv/))
 - `install.sh`: installs a systemd node, run on the node
 - `install-openwrt.sh`: installs an OpenWrt node over ssh, run from any host
@@ -31,6 +29,6 @@ The first install on a node generates `/etc/wireguard/wgmesh.key` and prints
 its public key. Put it in `mesh.yaml` as `pubkey`, run `gen.py` again, and
 reinstall every node. Private keys never leave their node.
 
-Node requirements: `wireguard-tools`, `avahi-daemon` (OpenWrt: `avahi-dbus-daemon`),
-`avahi-utils`, `curl`, `base64`. OpenWrt nodes treat the mesh like LAN
-(firewall zone 0) and accept WireGuard and mDNS from `wan`.
+Node requirements: `wireguard-tools`, `avahi-daemon` (OpenWrt: `avahi-dbus-daemon`)
+and `avahi-utils`. OpenWrt nodes treat the mesh like LAN (firewall zone 0) and
+accept WireGuard and mDNS from `wan`.
