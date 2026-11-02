@@ -13,7 +13,8 @@ next to nothing on metered links and works between peers on the same LAN.
   expires it, skips lookups of peers with a fresh WireGuard handshake, and
   quiets peers that are away: their lookups back off to every 4 minutes
   and, with `keepalive` set, their WireGuard keepalive is off until they
-  return. With `keepalive` set it also watches away peers on the OpenDHT
+  return, unless they carried traffic in the hour before, then it stays
+  on for up to a day. With `keepalive` set it also watches away peers on the OpenDHT
   proxies and restores keepalive as soon as one republishes, so a waking
   peer is not shut out by our NAT until our next lookup.
 

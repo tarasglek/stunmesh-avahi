@@ -20,6 +20,7 @@ type Peer struct {
 	Endpoint      string // host:port WireGuard currently sends to, "" if none
 	LastHandshake time.Time
 	Keepalive     time.Duration // persistent keepalive interval, 0 if off
+	Bytes         int64         // received plus transmitted
 }
 
 type Device struct {
@@ -43,7 +44,7 @@ func Read(name string) (Device, error) {
 	// wgtypes.Key is a [32]byte, so it assigns to our unnamed [32]byte fields.
 	dev := Device{PrivateKey: d.PrivateKey, PublicKey: d.PublicKey, ListenPort: d.ListenPort}
 	for _, p := range d.Peers {
-		peer := Peer{PublicKey: p.PublicKey, LastHandshake: p.LastHandshakeTime, Keepalive: p.PersistentKeepaliveInterval}
+		peer := Peer{PublicKey: p.PublicKey, LastHandshake: p.LastHandshakeTime, Keepalive: p.PersistentKeepaliveInterval, Bytes: p.ReceiveBytes + p.TransmitBytes}
 		if p.Endpoint != nil {
 			peer.Endpoint = p.Endpoint.String()
 		}

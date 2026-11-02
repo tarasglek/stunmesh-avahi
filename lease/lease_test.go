@@ -487,3 +487,54 @@ func TestPeerBackLogsSource(t *testing.T) {
 		})
 	}
 }
+
+// use moves the peer's byte counter by more than keepalives do, over a
+// tick with a fresh handshake, so the tick counts as the peer present.
+func (n *node) use() {
+	n.peer.Bytes += 4096
+	n.peer.Endpoint, n.peer.LastHandshake = "203.0.113.9:51821", n.now
+	n.get()
+	n.peer.LastHandshake = time.Time{}
+}
+
+func TestGetAwayAfterUseKeepsKeepaliveForADay(t *testing.T) {
+	n := newNode(t)
+	n.get() // first reading: baseline only
+	n.now = n.now.Add(time.Minute)
+	n.use()
+	n.now = n.now.Add(50 * time.Minute) // lid closed, record expires
+	n.get()
+	if n.peer.Keepalive != 25*time.Second {
+		t.Fatalf("keepalive = %v, want kept for a peer used 50 min before", n.peer.Keepalive)
+	}
+	n.now = n.now.Add(24 * time.Hour)
+	n.get()
+	if n.peer.Keepalive != 0 {
+		t.Errorf("keepalive = %v, want off after a day away", n.peer.Keepalive)
+	}
+}
+
+func TestGetAwayIdleOrLongUnusedTurnsKeepaliveOff(t *testing.T) {
+	n := newNode(t)
+	n.peer.Endpoint = "203.0.113.9:51821"
+	for i := 0; i < 10; i++ { // keepalives only, up for ten ticks
+		n.peer.LastHandshake = n.now
+		n.get()
+		n.now = n.now.Add(time.Minute)
+		n.peer.Bytes += 300
+	}
+	n.peer.LastHandshake = time.Time{}
+	n.get()
+	if n.peer.Keepalive != 0 {
+		t.Fatalf("keepalive = %v, want off for an idle peer", n.peer.Keepalive)
+	}
+	m := newNode(t)
+	m.get()
+	m.now = m.now.Add(time.Minute)
+	m.use()
+	m.now = m.now.Add(2 * time.Hour)
+	m.get()
+	if m.peer.Keepalive != 0 {
+		t.Errorf("keepalive = %v, want off for a peer last used 2 h before", m.peer.Keepalive)
+	}
+}

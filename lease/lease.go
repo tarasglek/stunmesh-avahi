@@ -27,7 +27,9 @@
 // A peer with no record and no fresh handshake has not published for a
 // whole expiry period and is away: Get looks it up again after 1, 2, then
 // every 4 minutes and, if keepalive is set, turns that peer's WireGuard
-// persistent keepalive off so WireGuard stops retrying handshakes to it. A
+// persistent keepalive off so WireGuard stops retrying handshakes to it,
+// unless the peer carried traffic in the hour before it went away: then the
+// keepalive stays for up to a day, so it gets straight back in on wake. A
 // record or a fresh handshake brings it back: lookups every tick and the
 // keepalive set to the configured interval, which should match the
 // WireGuard config. Unset, lease leaves keepalives alone. During backoff Get
@@ -140,8 +142,31 @@ type published struct {
 // away is a peer the wrapped instance had no record for.
 type away struct {
 	fails int
+	since time.Time // first failed lookup
 	next  time.Time // no lookup before this
 }
+
+// traffic is what a peer's WireGuard byte counter showed at the last Get.
+type traffic struct {
+	bytes  int64
+	active time.Time // last tick it moved more than keepalives do
+}
+
+const (
+	// activeBytes per tick tells use from WireGuard's own keepalives and
+	// handshakes, about 300 bytes a minute; a mosh session alone sends
+	// several kilobytes.
+	activeBytes = 1024
+	// keepWarm: a peer used this recently before going away keeps its
+	// keepalive, so our NAT still lets it in when it wakes, such as a
+	// laptop closed mid-session. A peer is only seen away 10-15 minutes
+	// after it stopped publishing, hence an hour.
+	keepWarm = time.Hour
+	// keepWarmMax bounds what a warm peer that never returns costs, about
+	// 2 MB a day of handshake retries; traffic is only remembered until
+	// restart. Checked on every lookup, so warm can end mid-absence.
+	keepWarmMax = 24 * time.Hour
+)
 
 // maxBackoff caps the wait between lookups of an away peer, and so how late
 // a returning peer is noticed.
@@ -158,12 +183,13 @@ type Store struct {
 	mu           sync.Mutex
 	last         map[string]published
 	away         map[string]away
+	traffic      map[string]traffic
 	watches      map[string]*watch
 	wg           sync.WaitGroup
 }
 
 func newStore(inner pluginapi.Store, keepalive time.Duration, device func(string) (wgdev.Device, error), setKeepalive func(string, [32]byte, time.Duration) error, now func() time.Time) *Store {
-	return &Store{inner: inner, keepalive: keepalive, device: device, setKeepalive: setKeepalive, now: now, retry: 30 * time.Second, last: map[string]published{}, away: map[string]away{}, watches: map[string]*watch{}}
+	return &Store{inner: inner, keepalive: keepalive, device: device, setKeepalive: setKeepalive, now: now, retry: 30 * time.Second, last: map[string]published{}, away: map[string]away{}, traffic: map[string]traffic{}, watches: map[string]*watch{}}
 }
 
 // Set is not reentrant per key: the core publishes sequentially
@@ -211,6 +237,15 @@ func (s *Store) Get(ctx context.Context, req pluginapi.PluginRequest) (string, e
 		return s.inner.Get(ctx, req)
 	}
 	key := req.Key
+	s.mu.Lock()
+	// Re-baselined every tick, so keepalives never add up to activity, and
+	// a counter reset (interface recreated) is a new baseline, not traffic.
+	t, ok := s.traffic[key]
+	if ok && peer.Bytes-t.bytes >= activeBytes {
+		t.active = s.now()
+	}
+	s.traffic[key] = traffic{peer.Bytes, t.active}
+	s.mu.Unlock()
 	if s.handshakeFresh(peer) {
 		// The tunnel is up, so the peer is present whatever the backend says.
 		s.present(ctx, req, peer, "handshake")
@@ -247,16 +282,25 @@ func (s *Store) Get(ctx context.Context, req pluginapi.PluginRequest) (string, e
 // 1, 2, 4, 4... minutes.
 func (s *Store) gone(ctx context.Context, req pluginapi.PluginRequest, peer wgdev.Peer, a away, err error) {
 	a.fails++
+	if a.fails == 1 {
+		a.since = s.now()
+	}
 	a.next = s.now().Add(min(time.Minute<<min(a.fails-1, 2), maxBackoff))
 	s.mu.Lock()
+	active := s.traffic[req.Key].active
 	s.away[req.Key] = a
 	if len(s.listen) > 0 && s.watches[req.Key] == nil {
 		s.startWatch(ctx, req)
 	}
 	s.mu.Unlock()
+	warm := !active.IsZero() && a.since.Sub(active) < keepWarm && s.now().Sub(a.since) < keepWarmMax
 	if a.fails == 1 {
 		// The error tells "no value" (peer gone) from a backend outage.
-		zerolog.Ctx(ctx).Info().Err(err).Str("plugin", "lease").Str("peer", pluginapi.Key(peer.PublicKey).String()[:8]).Msg("peer away")
+		zerolog.Ctx(ctx).Info().Err(err).Str("plugin", "lease").Str("peer", pluginapi.Key(peer.PublicKey).String()[:8]).Bool("warm", warm).Msg("peer away")
+	}
+	if warm {
+		s.setPeerKeepalive(ctx, req.Device, peer, s.keepalive)
+		return
 	}
 	s.setPeerKeepalive(ctx, req.Device, peer, 0)
 }
