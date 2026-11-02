@@ -128,7 +128,7 @@ plugins:
     name: opendht
     endpoints: ["http://dhtproxy2.jami.net", "http://dhtproxy3.jami.net", "https://dhtproxy2.jami.net"]
   # Publishes only on change or before the DHT expiry, skips lookups of
-  # peers with a fresh handshake, quiets peers that are away.
+  # peers with a fresh handshake, quiets and watches peers that are away.
   leased:
     type: builtin
     name: lease

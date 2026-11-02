@@ -13,7 +13,9 @@ next to nothing on metered links and works between peers on the same LAN.
   expires it, skips lookups of peers with a fresh WireGuard handshake, and
   quiets peers that are away: their lookups back off to every 4 minutes
   and, with `keepalive` set, their WireGuard keepalive is off until they
-  return.
+  return. With `keepalive` set it also watches away peers on the OpenDHT
+  proxies and restores keepalive as soon as one republishes, so a waking
+  peer is not shut out by our NAT until our next lookup.
 
 Both wrap another plugin instance through stunmesh-go's public plugin API
 ([#320](https://github.com/tjjh89017/stunmesh-go/issues/320)), so they work
@@ -44,9 +46,8 @@ plugins:
     next: leased
 ```
 
-lease also takes `republish` (default `7m30s`) and `fresh` (default `3m`).
-Keep `republish` plus stunmesh's `refresh_interval` under the store's expiry
-(10 minutes for OpenDHT).
+lease republishes every 7m30s, so keep stunmesh's `refresh_interval` at 2
+minutes or less against OpenDHT's 10 minute expiry.
 
 avahi writes `/etc/avahi/services/stunmesh-<device>.service`, only when the
 port or key changes.
@@ -86,8 +87,8 @@ Release: tag, push the tag, `make release`.
 - IPv4 only: live and LAN answers are IPv4 records.
 - No multicast (guest Wi-Fi, client isolation): avahi falls back to the
   store's record.
-- A peer that comes back after being away can take up to 4 minutes to be
-  looked up again, unless it reaches us first.
+- A waking peer: 2m20s to 7m23s to reconnect without the watch, measured
+  after one laptop wake; with it, put-to-push took under 3 seconds.
 
 ## License
 
