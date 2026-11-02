@@ -3,12 +3,14 @@
 package lease
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/endpoint"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -88,7 +90,7 @@ func newNodeKeepalive(t *testing.T, keepalive time.Duration) *node {
 	n.aPub, n.aPriv = keypair(t)
 	n.bPub, n.bPriv = keypair(t)
 	n.peer = wgdev.Peer{PublicKey: n.bPub, Keepalive: 25 * time.Second}
-	n.store = newStore(n.backend, 7*time.Minute+30*time.Second, 3*time.Minute, keepalive,
+	n.store = newStore(n.backend, keepalive,
 		func(string) (wgdev.Device, error) {
 			return wgdev.Device{PrivateKey: n.aPriv, PublicKey: n.aPub, Peers: []wgdev.Peer{n.peer}}, nil
 		},
@@ -446,5 +448,42 @@ func TestGetEmptyRecordIsAway(t *testing.T) {
 	n.get()
 	if n.peer.Keepalive != 0 {
 		t.Errorf("keepalive = %v, want off: an empty record means away", n.peer.Keepalive)
+	}
+}
+
+// logged runs Get with a logger and returns what it wrote.
+func (n *node) logged(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	ctx := zerolog.New(&buf).WithContext(context.Background())
+	n.store.Get(ctx, n.getReq())
+	return buf.String()
+}
+
+func TestPeerBackLogsSource(t *testing.T) {
+	cases := []struct {
+		name string
+		back func(n *node)
+		want string
+	}{
+		{"poll", func(n *node) { n.backend.data[n.getReq().Key] = "rec" }, `"source":"poll"`},
+		{"handshake", func(n *node) {
+			n.peer.Endpoint = "203.0.113.9:51821"
+			n.peer.LastHandshake = n.now
+		}, `"source":"handshake"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n := newNode(t)
+			n.get() // away
+			n.now = n.now.Add(3 * time.Minute)
+			c.back(n)
+			out := n.logged(t)
+			for _, w := range []string{`"message":"peer back"`, c.want} {
+				if !strings.Contains(out, w) {
+					t.Errorf("log %q lacks %s", out, w)
+				}
+			}
+		})
 	}
 }
