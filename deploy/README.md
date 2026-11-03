@@ -31,9 +31,10 @@ reinstall every node. Private keys never leave their node.
 
 A `client: true` node is a [stunmesh-cli](https://github.com/tarasglek/stunmesh-cli)
 userspace client, such as a phone; name it `<something>-cli`. `gen.py`
-writes only `<node>/node.json` for it: the public config and hosts table
-compiled into its binary. `stunmesh-cli keygen` on the device prints the
-`pubkey` for `mesh.yaml`; then reinstall the other nodes as usual.
+writes only `<node>/node.json` for it: the public config and hosts table,
+attached to its `sm` binary with `sm config attach`. `sm keygen` on the
+device prints the `pubkey` for `mesh.yaml`; then reinstall the other nodes
+as usual.
 
 Node requirements: `wireguard-tools`, `avahi-daemon` (OpenWrt: `avahi-dbus-daemon`)
 and `avahi-utils`. OpenWrt nodes treat the mesh like LAN (firewall zone 0) and
