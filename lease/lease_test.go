@@ -15,7 +15,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/pluginapi/endpoint"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 
-	"github.com/tarasglek/stunmesh-avahi/internal/wgdev"
+	"github.com/tarasglek/stunmesh-avahi/wgdev"
 )
 
 func keypair(t *testing.T) (pub, priv [32]byte) {

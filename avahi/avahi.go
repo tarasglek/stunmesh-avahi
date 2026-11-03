@@ -35,7 +35,7 @@ import (
 	"github.com/tjjh89017/stunmesh-go/pluginapi"
 	"github.com/tjjh89017/stunmesh-go/pluginapi/endpoint"
 
-	"github.com/tarasglek/stunmesh-avahi/internal/wgdev"
+	"github.com/tarasglek/stunmesh-avahi/wgdev"
 )
 
 const (
