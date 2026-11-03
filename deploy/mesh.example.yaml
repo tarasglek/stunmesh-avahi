@@ -3,7 +3,10 @@
 # is nobody's peer yet; its first install prints the key to fill in.
 # Each node gets its own WireGuard port, counting down from 32767 (gen.py
 # suggests the next one); never change a node's port once it's in use.
+# client: true is a stunmesh-cli node, WireGuard in userspace: it gets only
+# <node>/node.json, compiled into its binary, and its key is made on the device.
 nodes:
   desktop: { ip: 10.99.0.1, port: 32767 }
   laptop:  { ip: 10.99.0.2, port: 32766 }
   stick:   { ip: 10.99.0.3, port: 32765, openwrt: true }
+  phone-cli: { ip: 10.99.0.4, port: 32764, client: true }
